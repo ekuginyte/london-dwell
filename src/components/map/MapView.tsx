@@ -321,7 +321,7 @@ export function MapView({
       .setLngLat(filters.commuteTargetLngLat)
       .setPopup(new maplibregl.Popup({ offset: 12 }).setText(`Commute target: ${filters.commuteTargetPostcode}`))
       .addTo(map);
-    return () => m.remove();
+    return () => { m.remove(); };
   }, [filters.commuteEnabled, filters.commuteTargetLngLat, filters.commuteTargetPostcode]);
 
   return <div ref={containerRef} className="absolute inset-0" />;
