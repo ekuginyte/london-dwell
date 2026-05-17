@@ -313,7 +313,7 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    if (!filters.commuteEnabled || !filters.commuteTargetLngLat) return;
+    if (!filters.commuteEnabled || !filters.commuteTargetLngLat) return undefined;
     const el = document.createElement("div");
     el.style.cssText =
       "width:14px;height:14px;border-radius:50%;background:#0ea5e9;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)";

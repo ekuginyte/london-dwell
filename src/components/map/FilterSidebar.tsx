@@ -69,16 +69,6 @@ export function FilterSidebar({
             className="h-8 text-sm"
             placeholder="EC2A 4NE"
           />
-          <Button
-            size="sm"
-            variant={radiusDropMode ? "default" : "outline"}
-            className="w-full h-7 text-xs"
-            onClick={() => setRadiusDropMode(false) || alert("Click on the map to set the commute target")}
-            type="button"
-          >
-            <Crosshair className="w-3 h-3 mr-1" />
-            Or click map to set target
-          </Button>
           <div className="flex items-center justify-between text-xs">
             <span>Max minutes</span>
             <span className="font-mono">{f.commuteMaxMinutes}</span>
