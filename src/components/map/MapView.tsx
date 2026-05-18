@@ -1,9 +1,11 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import maplibregl, { type Map as MlMap, type MapMouseEvent } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useFilters } from "@/lib/map/filters.store";
-import { usePins } from "@/lib/map/pins.store";
+import { usePins, type Pin } from "@/lib/map/pins.store";
 import { computeAll, type Scores } from "@/lib/map/desirability";
+import { COMMUTER_TOWNS } from "@/lib/map/commuter-towns";
+import { ListingHoverPreview } from "./ListingHoverPreview";
 
 type Props = {
   pinDropMode: boolean;
@@ -13,10 +15,10 @@ type Props = {
   radiusDropMode: boolean;
 };
 
-// Free, beautiful light style — Maptiler's "basic" demo tiles (no key needed for dev).
-// Swap for your own Maptiler/Stadia key for production.
-const STYLE_URL =
-  "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+// CartoCDN Positron — soft, friendly light tiles. Free, no key.
+const STYLE_URL = "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
+
+type HoverState = { pin: Pin; x: number; y: number } | null;
 
 export function MapView({
   pinDropMode,
@@ -27,11 +29,13 @@ export function MapView({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MlMap | null>(null);
+  const geojsonRef = useRef<GeoJSON.FeatureCollection | null>(null);
   const scoresRef = useRef<Scores | null>(null);
   const drawCoordsRef = useRef<[number, number][]>([]);
   const filters = useFilters();
   const pins = usePins((s) => s.pins);
   const addAvoid = useFilters((s) => s.addAvoid);
+  const [hover, setHover] = useState<HoverState>(null);
 
   // Init map
   useEffect(() => {
@@ -40,77 +44,83 @@ export function MapView({
       container: containerRef.current,
       style: STYLE_URL,
       center: [-0.1278, 51.5074],
-      zoom: 10.2,
-      minZoom: 9,
+      zoom: 9.6,
+      minZoom: 7.5,
       maxZoom: 16,
+      // Wider bounds so users can pan to commuter towns (St Albans, Brighton, etc.)
+      maxBounds: [
+        [-2.2, 50.5],
+        [1.6, 52.6],
+      ],
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
 
     map.on("load", async () => {
-      const [geojson, scores] = await Promise.all([
-        fetch("/data/lsoa-london.geojson").then((r) => r.json()),
-        fetch("/data/lsoa-scores.json").then((r) => r.json() as Promise<Scores>),
-      ]);
+      let geojson: GeoJSON.FeatureCollection;
+      let scores: Scores;
+      try {
+        [geojson, scores] = await Promise.all([
+          fetch("/data/lsoa-london.geojson").then((r) => r.json()),
+          fetch("/data/lsoa-scores.json").then((r) => r.json() as Promise<Scores>),
+        ]);
+      } catch (e) {
+        console.error("Failed to load map data", e);
+        return;
+      }
+      if (!geojson?.features) return;
+      geojsonRef.current = geojson;
       scoresRef.current = scores;
 
-      // Attach score + passes to each feature so MapLibre expressions can read them
       const computed = computeAll(scores, useFilters.getState());
       for (const f of geojson.features) {
-        const c = f.properties.code as string;
-        f.properties.score = computed[c]?.score ?? 0;
-        f.properties.passes = computed[c]?.passes ? 1 : 0;
+        const c = f.properties!.code as string;
+        f.properties!.score = computed[c]?.score ?? 0;
+        f.properties!.passes = computed[c]?.passes ? 1 : 0;
       }
 
       map.addSource("lsoa", { type: "geojson", data: geojson });
 
-      // Heatmap fill (always present, opacity toggled by mode)
+      // Soft, Coinbase-cosy gradient (warm cream → mint → friendly green)
       map.addLayer({
         id: "lsoa-heat",
         type: "fill",
         source: "lsoa",
         paint: {
           "fill-color": [
-            "interpolate",
-            ["linear"],
-            ["get", "score"],
-            0, "#f5f7fa",
-            25, "#e8f0e3",
-            50, "#cfe3c0",
-            75, "#9ed18a",
-            100, "#5fa867",
+            "interpolate", ["linear"], ["get", "score"],
+            0, "#fdf7ee",
+            25, "#f0ead6",
+            50, "#d8ebcf",
+            75, "#9fd4a6",
+            100, "#3fb47a",
           ],
-          "fill-opacity": 0.55,
+          "fill-opacity": 0.6,
         },
       });
-
-      // Filter mask: pale grey over LSOAs that fail
       map.addLayer({
         id: "lsoa-mask",
         type: "fill",
         source: "lsoa",
         paint: {
-          "fill-color": "#0f172a",
-          "fill-opacity": [
-            "case",
-            ["==", ["get", "passes"], 0],
-            0.55,
-            0,
-          ],
+          "fill-color": "#0b1430",
+          "fill-opacity": ["case", ["==", ["get", "passes"], 0], 0.5, 0],
         },
         layout: { visibility: "none" },
       });
-
-      // Hairline borders
       map.addLayer({
         id: "lsoa-line",
         type: "line",
         source: "lsoa",
-        paint: { "line-color": "#94a3b8", "line-width": 0.3, "line-opacity": 0.4 },
+        paint: { "line-color": "#94a3b8", "line-width": 0.3, "line-opacity": 0.35 },
       });
 
-      // Hover info
-      const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+      // LSOA hover info popup
+      const popup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        className: "lhh-popup",
+      });
       map.on("mousemove", "lsoa-heat", (e) => {
         const f = e.features?.[0];
         if (!f) return;
@@ -118,9 +128,9 @@ export function MapView({
         popup
           .setLngLat(e.lngLat)
           .setHTML(
-            `<div style="font:12px system-ui;line-height:1.4">
-               <div style="font-weight:600">${f.properties.name}</div>
-               <div>Score: <b>${f.properties.score}</b>/100</div>
+            `<div style="font:12px -apple-system,system-ui;padding:4px 2px;line-height:1.45">
+               <div style="font-weight:600;color:#0b1430">${f.properties!.name}</div>
+               <div style="color:#475569">Score <b style="color:#0852ff">${f.properties!.score}</b>/100</div>
              </div>`,
           )
           .addTo(map);
@@ -130,51 +140,50 @@ export function MapView({
         popup.remove();
       });
 
-      // Sources for radius circle, avoid polygons, target marker
-      map.addSource("radius", { type: "geojson", data: emptyFC() });
+      // Radius / avoid / draw sources
+      for (const id of ["radius", "avoid", "draw"]) {
+        map.addSource(id, { type: "geojson", data: emptyFC() });
+      }
       map.addLayer({
-        id: "radius-fill",
-        type: "fill",
-        source: "radius",
-        paint: { "fill-color": "#3b82f6", "fill-opacity": 0.08 },
+        id: "radius-fill", type: "fill", source: "radius",
+        paint: { "fill-color": "#0852ff", "fill-opacity": 0.08 },
       });
       map.addLayer({
-        id: "radius-line",
-        type: "line",
-        source: "radius",
-        paint: { "line-color": "#3b82f6", "line-width": 1.5, "line-dasharray": [2, 2] },
+        id: "radius-line", type: "line", source: "radius",
+        paint: { "line-color": "#0852ff", "line-width": 1.5, "line-dasharray": [2, 2] },
       });
-
-      map.addSource("avoid", { type: "geojson", data: emptyFC() });
       map.addLayer({
-        id: "avoid-fill",
-        type: "fill",
-        source: "avoid",
+        id: "avoid-fill", type: "fill", source: "avoid",
         paint: { "fill-color": "#ef4444", "fill-opacity": 0.15 },
       });
       map.addLayer({
-        id: "avoid-line",
-        type: "line",
-        source: "avoid",
+        id: "avoid-line", type: "line", source: "avoid",
         paint: { "line-color": "#ef4444", "line-width": 1.5 },
       });
-
-      map.addSource("draw", { type: "geojson", data: emptyFC() });
       map.addLayer({
-        id: "draw-line",
-        type: "line",
-        source: "draw",
+        id: "draw-line", type: "line", source: "draw",
         paint: { "line-color": "#ef4444", "line-width": 2, "line-dasharray": [1, 1] },
       });
 
-      // Trigger initial overlay sync
+      // Commuter town markers (always visible — outside the LSOA layer)
+      for (const t of COMMUTER_TOWNS) {
+        const el = document.createElement("div");
+        el.style.cssText =
+          "display:flex;align-items:center;gap:6px;padding:4px 9px 4px 6px;background:white;border-radius:999px;box-shadow:0 2px 6px rgba(8,20,48,.12);border:1px solid rgba(8,20,48,.08);font:600 11px -apple-system,system-ui;color:#0b1430;cursor:pointer;white-space:nowrap";
+        el.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b"></span>${t.name} · ${t.trainMinsToLondon}min`;
+        el.title = `${t.name} — ~${t.trainMinsToLondon} min to central London by train`;
+        el.addEventListener("click", () => {
+          map.flyTo({ center: [t.lng, t.lat], zoom: 12, duration: 900 });
+        });
+        new maplibregl.Marker({ element: el, anchor: "left" })
+          .setLngLat([t.lng, t.lat])
+          .addTo(map);
+      }
+
       window.dispatchEvent(new Event("__lhh_overlays_ready"));
     });
 
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
+    return () => { map.remove(); mapRef.current = null; };
   }, []);
 
   // Recompute on every filter change
@@ -184,9 +193,8 @@ export function MapView({
     const sync = () => {
       const src = map.getSource("lsoa") as maplibregl.GeoJSONSource | undefined;
       const scores = scoresRef.current;
-      if (!src || !scores) return;
-      const data = (src as unknown as { _data: GeoJSON.FeatureCollection })._data;
-      if (!data) return;
+      const data = geojsonRef.current;
+      if (!src || !scores || !data) return;
       const computed = computeAll(scores, filters);
       for (const f of data.features) {
         const c = f.properties!.code as string;
@@ -195,18 +203,11 @@ export function MapView({
       }
       src.setData(data);
 
-      // Mode visibility
       const mode = filters.mode;
       map.setLayoutProperty("lsoa-mask", "visibility", mode === "filter" ? "visible" : "none");
-      map.setPaintProperty(
-        "lsoa-heat",
-        "fill-opacity",
-        mode === "heatmap" ? 0.7 : 0.45,
-      );
+      map.setPaintProperty("lsoa-heat", "fill-opacity", mode === "heatmap" ? 0.72 : 0.5);
 
-      // Radius circle source
       if (filters.radius) {
-        src.setData(data);
         (map.getSource("radius") as maplibregl.GeoJSONSource).setData(
           circleFC(filters.radius.lng, filters.radius.lat, filters.radius.radiusKm),
         );
@@ -214,12 +215,10 @@ export function MapView({
         (map.getSource("radius") as maplibregl.GeoJSONSource).setData(emptyFC());
       }
 
-      // Avoid polygons
       (map.getSource("avoid") as maplibregl.GeoJSONSource).setData({
         type: "FeatureCollection",
         features: filters.avoid.map((p) => ({
-          type: "Feature",
-          properties: {},
+          type: "Feature", properties: {},
           geometry: { type: "Polygon", coordinates: [closeRing(p.coords)] },
         })),
       });
@@ -228,65 +227,45 @@ export function MapView({
     else window.addEventListener("__lhh_overlays_ready", sync, { once: true });
   }, [filters]);
 
-  // Click handler for pin drop / radius drop / draw avoid
+  // Click handlers
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
     const handler = (e: MapMouseEvent) => {
-      if (pinDropMode) {
-        onPinDrop(e.lngLat.lng, e.lngLat.lat);
-        return;
-      }
-      if (radiusDropMode) {
-        onRadiusDrop(e.lngLat.lng, e.lngLat.lat);
-        return;
-      }
+      if (pinDropMode) return onPinDrop(e.lngLat.lng, e.lngLat.lat);
+      if (radiusDropMode) return onRadiusDrop(e.lngLat.lng, e.lngLat.lat);
       if (drawAvoidMode) {
         drawCoordsRef.current.push([e.lngLat.lng, e.lngLat.lat]);
-        const src = map.getSource("draw") as maplibregl.GeoJSONSource | undefined;
-        if (src) {
-          src.setData({
-            type: "FeatureCollection",
-            features: [
-              {
-                type: "Feature",
-                properties: {},
-                geometry: { type: "LineString", coordinates: drawCoordsRef.current },
-              },
-            ],
-          });
-        }
+        (map.getSource("draw") as maplibregl.GeoJSONSource | undefined)?.setData({
+          type: "FeatureCollection",
+          features: [{
+            type: "Feature", properties: {},
+            geometry: { type: "LineString", coordinates: drawCoordsRef.current },
+          }],
+        });
       }
     };
     map.on("click", handler);
-    map.getCanvas().style.cursor =
-      pinDropMode || radiusDropMode || drawAvoidMode ? "crosshair" : "";
-    return () => {
-      map.off("click", handler);
-    };
+    map.getCanvas().style.cursor = pinDropMode || radiusDropMode || drawAvoidMode ? "crosshair" : "";
+    return () => { map.off("click", handler); };
   }, [pinDropMode, radiusDropMode, drawAvoidMode, onPinDrop, onRadiusDrop]);
 
-  // Finish drawing on double-click (commit polygon)
+  // Finish draw on dblclick
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !drawAvoidMode) return;
     const finish = () => {
       const coords = drawCoordsRef.current;
-      if (coords.length >= 3) {
-        addAvoid({ id: crypto.randomUUID(), coords });
-      }
+      if (coords.length >= 3) addAvoid({ id: crypto.randomUUID(), coords });
       drawCoordsRef.current = [];
       (map.getSource("draw") as maplibregl.GeoJSONSource | undefined)?.setData(emptyFC());
     };
     map.on("dblclick", finish);
     map.doubleClickZoom.disable();
-    return () => {
-      map.off("dblclick", finish);
-      map.doubleClickZoom.enable();
-    };
+    return () => { map.off("dblclick", finish); map.doubleClickZoom.enable(); };
   }, [drawAvoidMode, addAvoid]);
 
-  // Property pins as DOM markers
+  // Property pins with rich hover preview
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -294,15 +273,21 @@ export function MapView({
     for (const p of pins) {
       const el = document.createElement("div");
       el.style.cssText =
-        "width:18px;height:18px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#1e293b;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3);cursor:pointer";
-      el.title = p.label;
-      const m = new maplibregl.Marker({ element: el })
+        "width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:linear-gradient(135deg,#0852ff,#3b82f6);border:2px solid white;box-shadow:0 3px 10px rgba(8,82,255,.35);cursor:pointer;transition:transform .15s";
+      el.addEventListener("mouseenter", () => {
+        el.style.transform = "rotate(-45deg) scale(1.15)";
+        const pt = map.project([p.lng, p.lat]);
+        setHover({ pin: p, x: pt.x, y: pt.y });
+      });
+      el.addEventListener("mouseleave", () => {
+        el.style.transform = "rotate(-45deg)";
+        // small delay so user can move into the floating card
+        setTimeout(() => {
+          setHover((h) => (h?.pin.id === p.id ? null : h));
+        }, 120);
+      });
+      const m = new maplibregl.Marker({ element: el, anchor: "bottom" })
         .setLngLat([p.lng, p.lat])
-        .setPopup(
-          new maplibregl.Popup({ offset: 16 }).setHTML(
-            `<div style="font:13px system-ui"><b>${escapeHtml(p.label)}</b>${p.url ? `<br><a href="${escapeAttr(p.url)}" target="_blank" rel="noopener">View listing</a>` : ""}${p.notes ? `<div style="margin-top:4px;color:#475569">${escapeHtml(p.notes)}</div>` : ""}</div>`,
-          ),
-        )
         .addTo(map);
       markers.push(m);
     }
@@ -316,15 +301,41 @@ export function MapView({
     if (!filters.commuteEnabled || !filters.commuteTargetLngLat) return undefined;
     const el = document.createElement("div");
     el.style.cssText =
-      "width:14px;height:14px;border-radius:50%;background:#0ea5e9;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,.3)";
+      "width:16px;height:16px;border-radius:50%;background:#f59e0b;border:3px solid white;box-shadow:0 2px 8px rgba(245,158,11,.45)";
     const m = new maplibregl.Marker({ element: el })
       .setLngLat(filters.commuteTargetLngLat)
-      .setPopup(new maplibregl.Popup({ offset: 12 }).setText(`Commute target: ${filters.commuteTargetPostcode}`))
+      .setPopup(new maplibregl.Popup({ offset: 12 }).setText(`Work: ${filters.commuteTargetPostcode}`))
       .addTo(map);
     return () => { m.remove(); };
   }, [filters.commuteEnabled, filters.commuteTargetLngLat, filters.commuteTargetPostcode]);
 
-  return <div ref={containerRef} className="absolute inset-0" />;
+  return (
+    <div ref={containerRef} className="absolute inset-0">
+      {hover && (
+        <div
+          className="absolute z-30 pointer-events-auto"
+          style={{
+            left: hover.x,
+            top: hover.y - 12,
+            transform: "translate(-50%, -100%)",
+          }}
+          onMouseEnter={() => setHover(hover)}
+          onMouseLeave={() => setHover(null)}
+        >
+          <div className="rounded-2xl bg-card border border-border shadow-xl p-1">
+            <div className="px-3 pt-2 pb-1 font-semibold text-sm">{hover.pin.label}</div>
+            {hover.pin.url ? (
+              <ListingHoverPreview url={hover.pin.url} />
+            ) : (
+              <div className="px-3 pb-3 text-xs text-muted-foreground w-[260px]">
+                {hover.pin.notes || "No listing URL added."}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function emptyFC(): GeoJSON.FeatureCollection {
@@ -351,11 +362,4 @@ function circleFC(lng: number, lat: number, radiusKm: number): GeoJSON.FeatureCo
     type: "FeatureCollection",
     features: [{ type: "Feature", properties: {}, geometry: { type: "Polygon", coordinates: [coords] } }],
   };
-}
-
-function escapeHtml(s: string) {
-  return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-}
-function escapeAttr(s: string) {
-  return escapeHtml(s);
 }
