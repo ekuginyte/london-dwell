@@ -183,7 +183,19 @@ export function MapView({
       window.dispatchEvent(new Event("__lhh_overlays_ready"));
     });
 
-    return () => { map.remove(); mapRef.current = null; };
+    const flyHandler = (e: Event) => {
+      const t = (e as CustomEvent).detail as { lng: number; lat: number };
+      if (t && typeof t.lng === "number") {
+        map.flyTo({ center: [t.lng, t.lat], zoom: 12, duration: 900 });
+      }
+    };
+    window.addEventListener("__lhh_fly", flyHandler);
+
+    return () => {
+      window.removeEventListener("__lhh_fly", flyHandler);
+      map.remove();
+      mapRef.current = null;
+    };
   }, []);
 
   // Recompute on every filter change
