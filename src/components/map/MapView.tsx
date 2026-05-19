@@ -330,7 +330,7 @@ export function MapView({
   }, [filters.commuteEnabled, filters.commuteTargetLngLat, filters.commuteTargetPostcode]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0">
+    <div ref={containerRef} className="absolute inset-0" style={{ width: "100%", height: "100%", minHeight: 400 }}>
       {hover && (
         <div
           className="absolute z-30 pointer-events-auto"
