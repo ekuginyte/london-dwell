@@ -228,10 +228,10 @@ export function FilterSidebar({
                   <li key={p.id} className="flex items-center justify-between text-xs px-3 py-2 rounded-xl bg-muted">
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{p.label}</div>
-                      {p.url && (
+                      {p.url && safeHostname(p.url) && (
                         <a href={p.url} target="_blank" rel="noopener"
                           className="text-[10px] text-primary truncate block">
-                          {new URL(p.url).hostname.replace("www.", "")}
+                          {safeHostname(p.url)}
                         </a>
                       )}
                     </div>
