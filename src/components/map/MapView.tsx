@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl, { type Map as MlMap, type MapMouseEvent } from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
 import { useFilters } from "@/lib/map/filters.store";
 import { usePins, type Pin } from "@/lib/map/pins.store";
 import { computeAll, type Scores } from "@/lib/map/desirability";
