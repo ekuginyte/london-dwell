@@ -29,6 +29,25 @@ export function FilterSidebar({
   const f = useFilters();
   const pins = usePins((s) => s.pins);
   const removePin = usePins((s) => s.remove);
+  const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [geoLabel, setGeoLabel] = useState<string>("");
+
+  // Debounced geocode of the work postcode → updates commute target on the map.
+  useEffect(() => {
+    const pc = f.commuteTargetPostcode.trim();
+    if (!pc) { setGeoStatus("idle"); return; }
+    setGeoStatus("loading");
+    const t = setTimeout(async () => {
+      const res = await geocodePostcode(pc);
+      if (!res) { setGeoStatus("err"); return; }
+      setGeoStatus("ok");
+      setGeoLabel(res.area ? `${res.postcode} · ${res.area}` : res.postcode);
+      f.set({ commuteTargetLngLat: [res.lng, res.lat] });
+      window.dispatchEvent(new CustomEvent("__lhh_fly", { detail: { lng: res.lng, lat: res.lat } }));
+    }, 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.commuteTargetPostcode]);
 
   const handleExport = () => {
     const summary: string[] = [];
