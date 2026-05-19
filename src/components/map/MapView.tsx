@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl, { type Map as MlMap, type MapMouseEvent } from "maplibre-gl";
-import "maplibre-gl/dist/maplibre-gl.css";
 import { useFilters } from "@/lib/map/filters.store";
 import { usePins, type Pin } from "@/lib/map/pins.store";
 import { computeAll, type Scores } from "@/lib/map/desirability";
@@ -55,6 +54,14 @@ export function MapView({
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
+
+    // Container can be 0×0 for an instant during hydration; nudge maplibre once
+    // the real layout settles, and again on any container resize.
+    const nudge = () => map.resize();
+    requestAnimationFrame(nudge);
+    setTimeout(nudge, 250);
+    const ro = new ResizeObserver(nudge);
+    ro.observe(containerRef.current);
 
     map.on("load", async () => {
       let geojson: GeoJSON.FeatureCollection;
@@ -192,6 +199,7 @@ export function MapView({
     window.addEventListener("__lhh_fly", flyHandler);
 
     return () => {
+      ro.disconnect();
       window.removeEventListener("__lhh_fly", flyHandler);
       map.remove();
       mapRef.current = null;
@@ -322,7 +330,7 @@ export function MapView({
   }, [filters.commuteEnabled, filters.commuteTargetLngLat, filters.commuteTargetPostcode]);
 
   return (
-    <div ref={containerRef} className="absolute inset-0">
+    <div ref={containerRef} className="absolute inset-0" style={{ width: "100%", height: "100%", minHeight: 400 }}>
       {hover && (
         <div
           className="absolute z-30 pointer-events-auto"
