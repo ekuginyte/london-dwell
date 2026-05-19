@@ -55,6 +55,14 @@ export function MapView({
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
     mapRef.current = map;
 
+    // Container can be 0×0 for an instant during hydration; nudge maplibre once
+    // the real layout settles, and again on any container resize.
+    const nudge = () => map.resize();
+    requestAnimationFrame(nudge);
+    setTimeout(nudge, 250);
+    const ro = new ResizeObserver(nudge);
+    ro.observe(containerRef.current);
+
     map.on("load", async () => {
       let geojson: GeoJSON.FeatureCollection;
       let scores: Scores;
