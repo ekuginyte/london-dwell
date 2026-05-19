@@ -9,7 +9,6 @@ import {
 } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
-import maplibreCss from "maplibre-gl/dist/maplibre-gl.css?url";
 
 function NotFoundComponent() {
   return (
