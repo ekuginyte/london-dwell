@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useFilters } from "@/lib/map/filters.store";
 import { usePins } from "@/lib/map/pins.store";
 import { Button } from "@/components/ui/button";
@@ -6,9 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { MapPin, Trash2, Pencil, Crosshair, Download, Sparkles } from "lucide-react";
+import { MapPin, Trash2, Pencil, Crosshair, Download, Sparkles, Check, Loader2 } from "lucide-react";
 import { COMMUTER_TOWNS } from "@/lib/map/commuter-towns";
 import { exportShortlistPDF } from "@/lib/map/export-pdf";
+import { geocodePostcode, safeHostname } from "@/lib/map/geocode";
 
 type Props = {
   pinDropMode: boolean;
