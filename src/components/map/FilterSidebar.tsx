@@ -97,12 +97,22 @@ export function FilterSidebar({
           onToggle={(v) => f.set({ commuteEnabled: v })}
         >
           <Label className="text-[11px] text-muted-foreground">Work postcode</Label>
-          <Input
-            value={f.commuteTargetPostcode}
-            onChange={(e) => f.set({ commuteTargetPostcode: e.target.value })}
-            className="h-9 rounded-xl text-sm"
-            placeholder="EC2A 4NE"
-          />
+          <div className="relative">
+            <Input
+              value={f.commuteTargetPostcode}
+              onChange={(e) => f.set({ commuteTargetPostcode: e.target.value })}
+              className="h-9 rounded-xl text-sm pr-8 uppercase"
+              placeholder="EC2A 4NE"
+            />
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
+              {geoStatus === "loading" && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+              {geoStatus === "ok" && <Check className="w-3.5 h-3.5 text-primary" />}
+              {geoStatus === "err" && <span className="text-[10px] text-destructive">not found</span>}
+            </span>
+          </div>
+          {geoStatus === "ok" && geoLabel && (
+            <p className="text-[10px] text-muted-foreground -mt-1">📍 {geoLabel}</p>
+          )}
           <Row label="Max minutes" value={`${f.commuteMaxMinutes}`} />
           <Slider
             value={[f.commuteMaxMinutes]}
@@ -110,7 +120,7 @@ export function FilterSidebar({
             onValueChange={([v]) => f.set({ commuteMaxMinutes: v })}
           />
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Currently a straight-line estimate. Swap in TfL Journey Planner for true isochrones.
+            Estimate uses real distance plus a London radial-line boost — no API key needed.
           </p>
         </Card>
 
