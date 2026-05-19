@@ -199,6 +199,7 @@ export function MapView({
     window.addEventListener("__lhh_fly", flyHandler);
 
     return () => {
+      ro.disconnect();
       window.removeEventListener("__lhh_fly", flyHandler);
       map.remove();
       mapRef.current = null;
