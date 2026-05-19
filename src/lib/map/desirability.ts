@@ -1,4 +1,5 @@
 import type { FiltersState } from "./filters.store";
+import { STATIONS, type Station } from "./stations";
 
 export type LsoaScore = {
   c: [number, number]; // centroid [lng,lat]
@@ -22,25 +23,56 @@ function distM(a: [number, number], b: [number, number]): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// Commute estimator without TfL: distance + radial-to-centre boost.
-// Tube/rail averages ~25 km/h door-to-door (~2.4 min/km). Trips that run
-// roughly along a London radial (origin & destination both reasonably aligned
-// with central London) get a small speed-up to reflect direct tube/rail lines;
-// trips that need an awkward cross-town hop get a small penalty.
-const LONDON_CENTRE: [number, number] = [-0.1278, 51.5074];
+// --- Station-anchored commute estimator (no API key) ---
+// For any point, find the nearest rail/tube station, walk to it (5 km/h),
+// then estimate the on-train leg from each station's "time from Zone 1"
+// using the heuristic from London Isochrone:
+//   transit ≈ min(timeA + timeB,  geo_km_between_stations * 2.0 + 5)
+// plus a small interchange penalty when both legs are non-zero.
+const WALK_MIN_PER_KM = 12;     // ~5 km/h
+const STATION_MAX_WALK_KM = 6;  // cap walking leg, beyond this we drive to the station (slower)
+const DRIVE_MIN_PER_KM = 2.5;
+
+function nearestStation(pt: [number, number]): { s: Station; km: number } {
+  let best: Station = STATIONS[0];
+  let bestKm = Infinity;
+  for (const s of STATIONS) {
+    const km = distM(pt, [s.lng, s.lat]) / 1000;
+    if (km < bestKm) { bestKm = km; best = s; }
+  }
+  return { s: best, km: bestKm };
+}
+
+function accessMinutes(km: number): number {
+  if (km <= STATION_MAX_WALK_KM) return km * WALK_MIN_PER_KM;
+  // long access leg: drive/bus
+  return STATION_MAX_WALK_KM * WALK_MIN_PER_KM +
+         (km - STATION_MAX_WALK_KM) * DRIVE_MIN_PER_KM;
+}
+
 export function estimateCommuteMinutes(
   from: [number, number],
   to: [number, number],
 ): number {
-  const km = distM(from, to) / 1000;
-  // Angle between (centre→from) and (centre→to) — small angle = aligned radial.
-  const v1 = [from[0] - LONDON_CENTRE[0], from[1] - LONDON_CENTRE[1]];
-  const v2 = [to[0] - LONDON_CENTRE[0], to[1] - LONDON_CENTRE[1]];
-  const n1 = Math.hypot(v1[0], v1[1]) || 1e-9;
-  const n2 = Math.hypot(v2[0], v2[1]) || 1e-9;
-  const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2);
-  const angleFactor = 1 - 0.25 * Math.max(0, cos); // up to -25% for aligned trips
-  return km * 2.4 * angleFactor + 6; // +6 min fixed walk/wait overhead
+  const a = nearestStation(from);
+  const b = nearestStation(to);
+
+  const accessA = accessMinutes(a.km);
+  const accessB = accessMinutes(b.km);
+
+  let transit: number;
+  if (a.s.id === b.s.id) {
+    transit = 0;
+  } else {
+    const stationKm = distM([a.s.lng, a.s.lat], [b.s.lng, b.s.lat]) / 1000;
+    const viaCentre = a.s.timeFromCentre + b.s.timeFromCentre;
+    const direct = stationKm * 2.0 + 5;
+    transit = Math.min(viaCentre, direct);
+    // Interchange / waiting buffer when actually riding
+    transit += 4;
+  }
+
+  return accessA + transit + accessB;
 }
 
 // Ray-casting point-in-polygon (single ring, lng/lat)

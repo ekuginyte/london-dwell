@@ -120,7 +120,7 @@ export function FilterSidebar({
             onValueChange={([v]) => f.set({ commuteMaxMinutes: v })}
           />
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Estimate uses real distance plus a London radial-line boost — no API key needed.
+            Estimate uses 130+ London & commuter-belt stations: walk → train → walk. No API key needed.
           </p>
         </Card>
 
