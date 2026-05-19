@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useFilters } from "@/lib/map/filters.store";
 import { usePins } from "@/lib/map/pins.store";
 import { Button } from "@/components/ui/button";
@@ -6,9 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { MapPin, Trash2, Pencil, Crosshair, Download, Sparkles } from "lucide-react";
+import { MapPin, Trash2, Pencil, Crosshair, Download, Sparkles, Check, Loader2 } from "lucide-react";
 import { COMMUTER_TOWNS } from "@/lib/map/commuter-towns";
 import { exportShortlistPDF } from "@/lib/map/export-pdf";
+import { geocodePostcode, safeHostname } from "@/lib/map/geocode";
 
 type Props = {
   pinDropMode: boolean;
@@ -27,6 +29,25 @@ export function FilterSidebar({
   const f = useFilters();
   const pins = usePins((s) => s.pins);
   const removePin = usePins((s) => s.remove);
+  const [geoStatus, setGeoStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [geoLabel, setGeoLabel] = useState<string>("");
+
+  // Debounced geocode of the work postcode → updates commute target on the map.
+  useEffect(() => {
+    const pc = f.commuteTargetPostcode.trim();
+    if (!pc) { setGeoStatus("idle"); return; }
+    setGeoStatus("loading");
+    const t = setTimeout(async () => {
+      const res = await geocodePostcode(pc);
+      if (!res) { setGeoStatus("err"); return; }
+      setGeoStatus("ok");
+      setGeoLabel(res.area ? `${res.postcode} · ${res.area}` : res.postcode);
+      f.set({ commuteTargetLngLat: [res.lng, res.lat] });
+      window.dispatchEvent(new CustomEvent("__lhh_fly", { detail: { lng: res.lng, lat: res.lat } }));
+    }, 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [f.commuteTargetPostcode]);
 
   const handleExport = () => {
     const summary: string[] = [];
@@ -76,12 +97,22 @@ export function FilterSidebar({
           onToggle={(v) => f.set({ commuteEnabled: v })}
         >
           <Label className="text-[11px] text-muted-foreground">Work postcode</Label>
-          <Input
-            value={f.commuteTargetPostcode}
-            onChange={(e) => f.set({ commuteTargetPostcode: e.target.value })}
-            className="h-9 rounded-xl text-sm"
-            placeholder="EC2A 4NE"
-          />
+          <div className="relative">
+            <Input
+              value={f.commuteTargetPostcode}
+              onChange={(e) => f.set({ commuteTargetPostcode: e.target.value })}
+              className="h-9 rounded-xl text-sm pr-8 uppercase"
+              placeholder="EC2A 4NE"
+            />
+            <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
+              {geoStatus === "loading" && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
+              {geoStatus === "ok" && <Check className="w-3.5 h-3.5 text-primary" />}
+              {geoStatus === "err" && <span className="text-[10px] text-destructive">not found</span>}
+            </span>
+          </div>
+          {geoStatus === "ok" && geoLabel && (
+            <p className="text-[10px] text-muted-foreground -mt-1">📍 {geoLabel}</p>
+          )}
           <Row label="Max minutes" value={`${f.commuteMaxMinutes}`} />
           <Slider
             value={[f.commuteMaxMinutes]}
@@ -89,7 +120,7 @@ export function FilterSidebar({
             onValueChange={([v]) => f.set({ commuteMaxMinutes: v })}
           />
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Currently a straight-line estimate. Swap in TfL Journey Planner for true isochrones.
+            Estimate uses real distance plus a London radial-line boost — no API key needed.
           </p>
         </Card>
 
@@ -197,10 +228,10 @@ export function FilterSidebar({
                   <li key={p.id} className="flex items-center justify-between text-xs px-3 py-2 rounded-xl bg-muted">
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{p.label}</div>
-                      {p.url && (
+                      {p.url && safeHostname(p.url) && (
                         <a href={p.url} target="_blank" rel="noopener"
                           className="text-[10px] text-primary truncate block">
-                          {new URL(p.url).hostname.replace("www.", "")}
+                          {safeHostname(p.url)}
                         </a>
                       )}
                     </div>

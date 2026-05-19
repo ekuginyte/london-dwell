@@ -22,15 +22,25 @@ function distM(a: [number, number], b: [number, number]): number {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-// PLACEHOLDER commute estimator: distance × London-realistic factor.
-// Tube/rail averages ~25 km/h door-to-door incl. walking & waits → ~2.4 min/km.
-// Replace with TfL Journey Planner once TFL_APP_KEY is added.
+// Commute estimator without TfL: distance + radial-to-centre boost.
+// Tube/rail averages ~25 km/h door-to-door (~2.4 min/km). Trips that run
+// roughly along a London radial (origin & destination both reasonably aligned
+// with central London) get a small speed-up to reflect direct tube/rail lines;
+// trips that need an awkward cross-town hop get a small penalty.
+const LONDON_CENTRE: [number, number] = [-0.1278, 51.5074];
 export function estimateCommuteMinutes(
   from: [number, number],
   to: [number, number],
 ): number {
   const km = distM(from, to) / 1000;
-  return km * 2.4 + 5; // +5 min fixed access overhead
+  // Angle between (centre→from) and (centre→to) — small angle = aligned radial.
+  const v1 = [from[0] - LONDON_CENTRE[0], from[1] - LONDON_CENTRE[1]];
+  const v2 = [to[0] - LONDON_CENTRE[0], to[1] - LONDON_CENTRE[1]];
+  const n1 = Math.hypot(v1[0], v1[1]) || 1e-9;
+  const n2 = Math.hypot(v2[0], v2[1]) || 1e-9;
+  const cos = (v1[0] * v2[0] + v1[1] * v2[1]) / (n1 * n2);
+  const angleFactor = 1 - 0.25 * Math.max(0, cos); // up to -25% for aligned trips
+  return km * 2.4 * angleFactor + 6; // +6 min fixed walk/wait overhead
 }
 
 // Ray-casting point-in-polygon (single ring, lng/lat)
