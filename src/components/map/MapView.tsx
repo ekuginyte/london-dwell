@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Map as MlMap, MapMouseEvent } from "maplibre-gl";
+import type { Map as MlMap, MapMouseEvent, GeoJSONSource, Marker as MlMarker } from "maplibre-gl";
 import { useFilters } from "@/lib/map/filters.store";
 import { usePins, type Pin } from "@/lib/map/pins.store";
 import { computeAll, type Scores } from "@/lib/map/desirability";
