@@ -292,7 +292,7 @@ export function MapView({
       const coords = drawCoordsRef.current;
       if (coords.length >= 3) addAvoid({ id: crypto.randomUUID(), coords });
       drawCoordsRef.current = [];
-      (map.getSource("draw") as maplibregl.GeoJSONSource | undefined)?.setData(emptyFC());
+      (map.getSource("draw") as GeoJSONSource | undefined)?.setData(emptyFC());
     };
     map.on("dblclick", finish);
     map.doubleClickZoom.disable();
