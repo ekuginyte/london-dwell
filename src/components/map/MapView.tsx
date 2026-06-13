@@ -47,172 +47,175 @@ export function MapView({
   const addAvoid = useFilters((s) => s.addAvoid);
   const [hover, setHover] = useState<HoverState>(null);
 
-  // Init map
+  // Init map (lazy-load maplibre so SSR doesn't crash)
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: STYLE_URL,
-      center: [-0.1278, 51.5074],
-      zoom: 9.6,
-      minZoom: 7.5,
-      maxZoom: 16,
-      // Wider bounds so users can pan to commuter towns (St Albans, Brighton, etc.)
-      maxBounds: [
-        [-2.2, 50.5],
-        [1.6, 52.6],
-      ],
-    });
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
-    mapRef.current = map;
+    let cancelled = false;
+    let ro: ResizeObserver | null = null;
+    let flyHandler: ((e: Event) => void) | null = null;
 
-    // Container can be 0×0 for an instant during hydration; nudge maplibre once
-    // the real layout settles, and again on any container resize.
-    const nudge = () => map.resize();
-    requestAnimationFrame(nudge);
-    setTimeout(nudge, 250);
-    const ro = new ResizeObserver(nudge);
-    ro.observe(containerRef.current);
+    (async () => {
+      const ml = await getMaplibre();
+      if (cancelled || !containerRef.current) return;
 
-    map.on("load", async () => {
-      let geojson: GeoJSON.FeatureCollection;
-      let scores: Scores;
-      try {
-        [geojson, scores] = await Promise.all([
-          fetch("/data/lsoa-london.geojson").then((r) => r.json()),
-          fetch("/data/lsoa-scores.json").then((r) => r.json() as Promise<Scores>),
-        ]);
-      } catch (e) {
-        console.error("Failed to load map data", e);
-        return;
-      }
-      if (!geojson?.features) return;
-      geojsonRef.current = geojson;
-      scoresRef.current = scores;
+      const map: MlMap = new ml.Map({
+        container: containerRef.current,
+        style: STYLE_URL,
+        center: [-0.1278, 51.5074],
+        zoom: 9.6,
+        minZoom: 7.5,
+        maxZoom: 16,
+        maxBounds: [
+          [-2.2, 50.5],
+          [1.6, 52.6],
+        ],
+      });
+      map.addControl(new ml.NavigationControl({ showCompass: false }), "top-right");
+      mapRef.current = map;
 
-      const computed = computeAll(scores, useFilters.getState());
-      for (const f of geojson.features) {
-        const c = f.properties!.code as string;
-        f.properties!.score = computed[c]?.score ?? 0;
-        f.properties!.passes = computed[c]?.passes ? 1 : 0;
-      }
+      const nudge = () => map.resize();
+      requestAnimationFrame(nudge);
+      setTimeout(nudge, 250);
+      ro = new ResizeObserver(nudge);
+      ro.observe(containerRef.current);
 
-      map.addSource("lsoa", { type: "geojson", data: geojson });
+      map.on("load", async () => {
+        let geojson: GeoJSON.FeatureCollection;
+        let scores: Scores;
+        try {
+          [geojson, scores] = await Promise.all([
+            fetch("/data/lsoa-london.geojson").then((r) => r.json()),
+            fetch("/data/lsoa-scores.json").then((r) => r.json() as Promise<Scores>),
+          ]);
+        } catch (e) {
+          console.error("Failed to load map data", e);
+          return;
+        }
+        if (!geojson?.features) return;
+        geojsonRef.current = geojson;
+        scoresRef.current = scores;
 
-      // Soft, Coinbase-cosy gradient (warm cream → mint → friendly green)
-      map.addLayer({
-        id: "lsoa-heat",
-        type: "fill",
-        source: "lsoa",
-        paint: {
-          "fill-color": [
-            "interpolate", ["linear"], ["get", "score"],
-            0, "#fdf7ee",
-            25, "#f0ead6",
-            50, "#d8ebcf",
-            75, "#9fd4a6",
-            100, "#3fb47a",
-          ],
-          "fill-opacity": 0.6,
-        },
-      });
-      map.addLayer({
-        id: "lsoa-mask",
-        type: "fill",
-        source: "lsoa",
-        paint: {
-          "fill-color": "#0b1430",
-          "fill-opacity": ["case", ["==", ["get", "passes"], 0], 0.5, 0],
-        },
-        layout: { visibility: "none" },
-      });
-      map.addLayer({
-        id: "lsoa-line",
-        type: "line",
-        source: "lsoa",
-        paint: { "line-color": "#94a3b8", "line-width": 0.3, "line-opacity": 0.35 },
-      });
+        const computed = computeAll(scores, useFilters.getState());
+        for (const f of geojson.features) {
+          const c = f.properties!.code as string;
+          f.properties!.score = computed[c]?.score ?? 0;
+          f.properties!.passes = computed[c]?.passes ? 1 : 0;
+        }
 
-      // LSOA hover info popup
-      const popup = new maplibregl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        className: "lhh-popup",
-      });
-      map.on("mousemove", "lsoa-heat", (e) => {
-        const f = e.features?.[0];
-        if (!f) return;
-        map.getCanvas().style.cursor = "crosshair";
-        popup
-          .setLngLat(e.lngLat)
-          .setHTML(
-            `<div style="font:12px -apple-system,system-ui;padding:4px 2px;line-height:1.45">
-               <div style="font-weight:600;color:#0b1430">${f.properties!.name}</div>
-               <div style="color:#475569">Score <b style="color:#0852ff">${f.properties!.score}</b>/100</div>
-             </div>`,
-          )
-          .addTo(map);
-      });
-      map.on("mouseleave", "lsoa-heat", () => {
-        map.getCanvas().style.cursor = "";
-        popup.remove();
-      });
+        map.addSource("lsoa", { type: "geojson", data: geojson });
 
-      // Radius / avoid / draw sources
-      for (const id of ["radius", "avoid", "draw"]) {
-        map.addSource(id, { type: "geojson", data: emptyFC() });
-      }
-      map.addLayer({
-        id: "radius-fill", type: "fill", source: "radius",
-        paint: { "fill-color": "#0852ff", "fill-opacity": 0.08 },
-      });
-      map.addLayer({
-        id: "radius-line", type: "line", source: "radius",
-        paint: { "line-color": "#0852ff", "line-width": 1.5, "line-dasharray": [2, 2] },
-      });
-      map.addLayer({
-        id: "avoid-fill", type: "fill", source: "avoid",
-        paint: { "fill-color": "#ef4444", "fill-opacity": 0.15 },
-      });
-      map.addLayer({
-        id: "avoid-line", type: "line", source: "avoid",
-        paint: { "line-color": "#ef4444", "line-width": 1.5 },
-      });
-      map.addLayer({
-        id: "draw-line", type: "line", source: "draw",
-        paint: { "line-color": "#ef4444", "line-width": 2, "line-dasharray": [1, 1] },
-      });
-
-      // Commuter town markers (always visible — outside the LSOA layer)
-      for (const t of COMMUTER_TOWNS) {
-        const el = document.createElement("div");
-        el.style.cssText =
-          "display:flex;align-items:center;gap:6px;padding:4px 9px 4px 6px;background:white;border-radius:999px;box-shadow:0 2px 6px rgba(8,20,48,.12);border:1px solid rgba(8,20,48,.08);font:600 11px -apple-system,system-ui;color:#0b1430;cursor:pointer;white-space:nowrap";
-        el.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b"></span>${t.name} · ${t.trainMinsToLondon}min`;
-        el.title = `${t.name} — ~${t.trainMinsToLondon} min to central London by train`;
-        el.addEventListener("click", () => {
-          map.flyTo({ center: [t.lng, t.lat], zoom: 12, duration: 900 });
+        map.addLayer({
+          id: "lsoa-heat",
+          type: "fill",
+          source: "lsoa",
+          paint: {
+            "fill-color": [
+              "interpolate", ["linear"], ["get", "score"],
+              0, "#fdf7ee",
+              25, "#f0ead6",
+              50, "#d8ebcf",
+              75, "#9fd4a6",
+              100, "#3fb47a",
+            ],
+            "fill-opacity": 0.6,
+          },
         });
-        new maplibregl.Marker({ element: el, anchor: "left" })
-          .setLngLat([t.lng, t.lat])
-          .addTo(map);
-      }
+        map.addLayer({
+          id: "lsoa-mask",
+          type: "fill",
+          source: "lsoa",
+          paint: {
+            "fill-color": "#0b1430",
+            "fill-opacity": ["case", ["==", ["get", "passes"], 0], 0.5, 0],
+          },
+          layout: { visibility: "none" },
+        });
+        map.addLayer({
+          id: "lsoa-line",
+          type: "line",
+          source: "lsoa",
+          paint: { "line-color": "#94a3b8", "line-width": 0.3, "line-opacity": 0.35 },
+        });
 
-      window.dispatchEvent(new Event("__lhh_overlays_ready"));
-    });
+        const popup = new ml.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          className: "lhh-popup",
+        });
+        map.on("mousemove", "lsoa-heat", (e: MapMouseEvent & { features?: GeoJSON.Feature[] }) => {
+          const f = e.features?.[0];
+          if (!f) return;
+          map.getCanvas().style.cursor = "crosshair";
+          popup
+            .setLngLat(e.lngLat)
+            .setHTML(
+              `<div style="font:12px -apple-system,system-ui;padding:4px 2px;line-height:1.45">
+                 <div style="font-weight:600;color:#0b1430">${f.properties!.name}</div>
+                 <div style="color:#475569">Score <b style="color:#0852ff">${f.properties!.score}</b>/100</div>
+               </div>`,
+            )
+            .addTo(map);
+        });
+        map.on("mouseleave", "lsoa-heat", () => {
+          map.getCanvas().style.cursor = "";
+          popup.remove();
+        });
 
-    const flyHandler = (e: Event) => {
-      const t = (e as CustomEvent).detail as { lng: number; lat: number };
-      if (t && typeof t.lng === "number") {
-        map.flyTo({ center: [t.lng, t.lat], zoom: 12, duration: 900 });
-      }
-    };
-    window.addEventListener("__lhh_fly", flyHandler);
+        for (const id of ["radius", "avoid", "draw"]) {
+          map.addSource(id, { type: "geojson", data: emptyFC() });
+        }
+        map.addLayer({
+          id: "radius-fill", type: "fill", source: "radius",
+          paint: { "fill-color": "#0852ff", "fill-opacity": 0.08 },
+        });
+        map.addLayer({
+          id: "radius-line", type: "line", source: "radius",
+          paint: { "line-color": "#0852ff", "line-width": 1.5, "line-dasharray": [2, 2] },
+        });
+        map.addLayer({
+          id: "avoid-fill", type: "fill", source: "avoid",
+          paint: { "fill-color": "#ef4444", "fill-opacity": 0.15 },
+        });
+        map.addLayer({
+          id: "avoid-line", type: "line", source: "avoid",
+          paint: { "line-color": "#ef4444", "line-width": 1.5 },
+        });
+        map.addLayer({
+          id: "draw-line", type: "line", source: "draw",
+          paint: { "line-color": "#ef4444", "line-width": 2, "line-dasharray": [1, 1] },
+        });
+
+        for (const t of COMMUTER_TOWNS) {
+          const el = document.createElement("div");
+          el.style.cssText =
+            "display:flex;align-items:center;gap:6px;padding:4px 9px 4px 6px;background:white;border-radius:999px;box-shadow:0 2px 6px rgba(8,20,48,.12);border:1px solid rgba(8,20,48,.08);font:600 11px -apple-system,system-ui;color:#0b1430;cursor:pointer;white-space:nowrap";
+          el.innerHTML = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#f59e0b"></span>${t.name} · ${t.trainMinsToLondon}min`;
+          el.title = `${t.name} — ~${t.trainMinsToLondon} min to central London by train`;
+          el.addEventListener("click", () => {
+            map.flyTo({ center: [t.lng, t.lat], zoom: 12, duration: 900 });
+          });
+          new ml.Marker({ element: el, anchor: "left" })
+            .setLngLat([t.lng, t.lat])
+            .addTo(map);
+        }
+
+        window.dispatchEvent(new Event("__lhh_overlays_ready"));
+      });
+
+      flyHandler = (e: Event) => {
+        const t = (e as CustomEvent).detail as { lng: number; lat: number };
+        if (t && typeof t.lng === "number") {
+          map.flyTo({ center: [t.lng, t.lat], zoom: 12, duration: 900 });
+        }
+      };
+      window.addEventListener("__lhh_fly", flyHandler);
+    })();
 
     return () => {
-      ro.disconnect();
-      window.removeEventListener("__lhh_fly", flyHandler);
-      map.remove();
+      cancelled = true;
+      ro?.disconnect();
+      if (flyHandler) window.removeEventListener("__lhh_fly", flyHandler);
+      mapRef.current?.remove();
       mapRef.current = null;
     };
   }, []);
