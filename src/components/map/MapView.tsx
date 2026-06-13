@@ -303,7 +303,7 @@ export function MapView({
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const markers: maplibregl.Marker[] = [];
+    const markers: MlMarker[] = [];
     for (const p of pins) {
       const el = document.createElement("div");
       el.style.cssText =
