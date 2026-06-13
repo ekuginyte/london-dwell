@@ -320,7 +320,7 @@ export function MapView({
           setHover((h) => (h?.pin.id === p.id ? null : h));
         }, 120);
       });
-      const m = new maplibregl.Marker({ element: el, anchor: "bottom" })
+      const m = new maplibregl!.Marker({ element: el, anchor: "bottom" })
         .setLngLat([p.lng, p.lat])
         .addTo(map);
       markers.push(m);
