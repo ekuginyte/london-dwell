@@ -28,7 +28,6 @@ export const Route = createFileRoute("/")({
 function MapPage() {
   const hydrate = usePins((s) => s.hydrate);
   const setRadius = useFilters((s) => s.setRadius);
-  const setCommuteTarget = useFilters((s) => s.set);
   const [pinDropMode, setPinDropMode] = useState(false);
   const [radiusDropMode, setRadiusDropMode] = useState(false);
   const [drawAvoidMode, setDrawAvoidMode] = useState(false);
@@ -38,6 +37,27 @@ function MapPage() {
   useEffect(() => {
     hydrate();
   }, [hydrate]);
+
+  // Escape cancels any active map-click mode
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPinDropMode(false);
+        setRadiusDropMode(false);
+        setDrawAvoidMode(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const activeMode = pinDropMode
+    ? { label: "Click the map to drop a property pin", cancel: () => setPinDropMode(false) }
+    : radiusDropMode
+    ? { label: "Click the map to place your custom radius pin", cancel: () => setRadiusDropMode(false) }
+    : drawAvoidMode
+    ? { label: "Click to add points, double-click to finish the avoid polygon", cancel: () => setDrawAvoidMode(false) }
+    : null;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden">
