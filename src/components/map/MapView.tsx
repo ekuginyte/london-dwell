@@ -6,15 +6,15 @@ import { computeAll, type Scores } from "@/lib/map/desirability";
 import { COMMUTER_TOWNS } from "@/lib/map/commuter-towns";
 import { ListingHoverPreview } from "./ListingHoverPreview";
 
-// maplibre-gl touches window on import — load it lazily inside effects so SSR works.
-type Maplibre = typeof import("maplibre-gl").default;
-let _ml: Maplibre | null = null;
-async function getMaplibre(): Promise<Maplibre> {
-  if (_ml) return _ml;
-  const mod = await import("maplibre-gl");
-  await import("maplibre-gl/dist/maplibre-gl.css");
-  _ml = mod.default;
-  return _ml;
+// maplibre-gl touches window on import — load it lazily so SSR doesn't crash.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let maplibregl: any = null;
+async function getMaplibre() {
+  if (maplibregl) return maplibregl;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mod: any = await import("maplibre-gl");
+  maplibregl = mod.default ?? mod;
+  return maplibregl;
 }
 
 type Props = {
