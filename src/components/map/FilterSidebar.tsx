@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { MapPin, Trash2, Pencil, Crosshair, Download, Sparkles, Check, Loader2 } from "lucide-react";
+import { MapPin, Trash2, Pencil, Crosshair, Download, Sparkles, Check, Loader2, Train, GraduationCap, Trees, Ban, TramFront, Heart } from "lucide-react";
 import { COMMUTER_TOWNS } from "@/lib/map/commuter-towns";
 import { exportShortlistPDF } from "@/lib/map/export-pdf";
 import { geocodePostcode, safeHostname } from "@/lib/map/geocode";
@@ -92,7 +92,7 @@ export function FilterSidebar({
         {/* Commute */}
         <Card
           title="Commute"
-          emoji="🚇"
+          icon={Train}
           enabled={f.commuteEnabled}
           onToggle={(v) => f.set({ commuteEnabled: v })}
         >
@@ -103,6 +103,7 @@ export function FilterSidebar({
               onChange={(e) => f.set({ commuteTargetPostcode: e.target.value })}
               className="h-9 rounded-xl text-sm pr-8 uppercase"
               placeholder="EC2A 4NE"
+              aria-label="Work postcode"
             />
             <span className="absolute right-2.5 top-1/2 -translate-y-1/2">
               {geoStatus === "loading" && <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />}
@@ -111,7 +112,9 @@ export function FilterSidebar({
             </span>
           </div>
           {geoStatus === "ok" && geoLabel && (
-            <p className="text-[10px] text-muted-foreground -mt-1">📍 {geoLabel}</p>
+            <p className="text-[10px] text-muted-foreground -mt-1 flex items-center gap-1">
+              <MapPin className="w-3 h-3" />{geoLabel}
+            </p>
           )}
           <Row label="Max minutes" value={`${f.commuteMaxMinutes}`} />
           <Slider
@@ -120,33 +123,33 @@ export function FilterSidebar({
             onValueChange={([v]) => f.set({ commuteMaxMinutes: v })}
           />
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Estimate uses 130+ London & commuter-belt stations: walk → train → walk. No API key needed.
+            Estimate uses 130+ London & commuter-belt stations: walk, train, walk. No API key needed.
           </p>
         </Card>
 
         {/* Schools */}
-        <Card title="Schools" emoji="🎓" enabled={f.schoolsEnabled} onToggle={(v) => f.set({ schoolsEnabled: v })}>
+        <Card title="Schools" icon={GraduationCap} enabled={f.schoolsEnabled} onToggle={(v) => f.set({ schoolsEnabled: v })}>
           <Row label="Min Ofsted score" value={`${Math.round(f.schoolsMin * 100)}%`} />
           <Slider value={[f.schoolsMin * 100]} min={0} max={100} step={5}
             onValueChange={([v]) => f.set({ schoolsMin: v / 100 })} />
         </Card>
 
         {/* Parks */}
-        <Card title="Parks proximity" emoji="🌳" enabled={f.parksEnabled} onToggle={(v) => f.set({ parksEnabled: v })}>
+        <Card title="Parks proximity" icon={Trees} enabled={f.parksEnabled} onToggle={(v) => f.set({ parksEnabled: v })}>
           <Row label="Within" value={`${f.parksMaxMetres} m`} />
           <Slider value={[f.parksMaxMetres]} min={200} max={2000} step={100}
             onValueChange={([v]) => f.set({ parksMaxMetres: v })} />
         </Card>
 
         {/* Custom radius */}
-        <Card title="Custom radius" emoji="📍" alwaysOn>
+        <Card title="Custom radius" icon={Crosshair} alwaysOn>
           <Button
             variant={radiusDropMode ? "default" : "outline"}
             className="w-full h-9 rounded-xl text-xs"
             onClick={() => setRadiusDropMode(!radiusDropMode)}
           >
             <Crosshair className="w-3.5 h-3.5 mr-1.5" />
-            {radiusDropMode ? "Click map to place…" : f.radius ? "Move radius pin" : "Drop radius pin"}
+            {radiusDropMode ? "Click the map to place" : f.radius ? "Move radius pin" : "Drop radius pin"}
           </Button>
           {f.radius && (
             <>
@@ -161,7 +164,7 @@ export function FilterSidebar({
         </Card>
 
         {/* Avoid zones */}
-        <Card title="Avoid zones" emoji="🚫" alwaysOn>
+        <Card title="Avoid zones" icon={Ban} alwaysOn>
           <Button
             variant={drawAvoidMode ? "default" : "outline"}
             className="w-full h-9 rounded-xl text-xs"
@@ -179,7 +182,7 @@ export function FilterSidebar({
         </Card>
 
         {/* Commuter towns */}
-        <Card title="Commuter towns" emoji="🚆" alwaysOn>
+        <Card title="Commuter towns" icon={TramFront} alwaysOn>
           <p className="text-[11px] text-muted-foreground -mt-1">
             Jump to popular spots within an hour of central London.
           </p>
@@ -201,7 +204,7 @@ export function FilterSidebar({
         </Card>
 
         {f.mode === "heatmap" && (
-          <Card title="Heatmap weights" emoji="✨" alwaysOn>
+          <Card title="Heatmap weights" icon={Sparkles} alwaysOn>
             <Weight label="Commute" value={f.wCommute} onChange={(v) => f.set({ wCommute: v })} />
             <Weight label="Schools" value={f.wSchools} onChange={(v) => f.set({ wSchools: v })} />
             <Weight label="Parks" value={f.wParks} onChange={(v) => f.set({ wParks: v })} />
@@ -212,14 +215,14 @@ export function FilterSidebar({
         <Separator />
 
         {/* Shortlist */}
-        <Card title={`Shortlist (${pins.length})`} emoji="💛" alwaysOn>
+        <Card title={`Shortlist (${pins.length})`} icon={Heart} alwaysOn>
           <Button
             variant={pinDropMode ? "default" : "outline"}
             className="w-full h-9 rounded-xl text-xs"
             onClick={() => setPinDropMode(!pinDropMode)}
           >
             <MapPin className="w-3.5 h-3.5 mr-1.5" />
-            {pinDropMode ? "Click map to drop pin…" : "Add property pin"}
+            {pinDropMode ? "Click the map to drop pin" : "Add property pin"}
           </Button>
           {pins.length > 0 && (
             <>
@@ -250,7 +253,7 @@ export function FilterSidebar({
             </>
           )}
           <p className="text-[10px] text-muted-foreground leading-snug">
-            Paste a Rightmove / Zoopla / OnTheMarket URL in a pin — hover the pin to preview the listing.
+            Paste a Rightmove / Zoopla / OnTheMarket URL in a pin, then hover the pin to preview the listing.
           </p>
         </Card>
 
@@ -264,18 +267,23 @@ export function FilterSidebar({
 }
 
 function Card({
-  title, emoji, children, enabled, onToggle, alwaysOn,
+  title, icon: Icon, children, enabled, onToggle, alwaysOn,
 }: {
-  title: string; emoji: string; children: React.ReactNode;
+  title: string;
+  icon: React.ComponentType<{ className?: string }>;
+  children: React.ReactNode;
   enabled?: boolean; onToggle?: (v: boolean) => void; alwaysOn?: boolean;
 }) {
   return (
     <section className="rounded-2xl border border-border bg-card p-4 space-y-2.5 shadow-[0_1px_2px_rgba(8,20,48,0.04)]">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-semibold flex items-center gap-2">
-          <span>{emoji}</span>{title}
+          <span className="w-6 h-6 rounded-lg bg-muted flex items-center justify-center text-foreground/70">
+            <Icon className="w-3.5 h-3.5" />
+          </span>
+          {title}
         </h2>
-        {!alwaysOn && <Switch checked={!!enabled} onCheckedChange={onToggle} />}
+        {!alwaysOn && <Switch checked={!!enabled} onCheckedChange={onToggle} aria-label={`Enable ${title}`} />}
       </div>
       {(alwaysOn || enabled) && <div className="space-y-2.5">{children}</div>}
     </section>
