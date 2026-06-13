@@ -1,10 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import maplibregl, { type Map as MlMap, type MapMouseEvent } from "maplibre-gl";
+import type { Map as MlMap, MapMouseEvent } from "maplibre-gl";
 import { useFilters } from "@/lib/map/filters.store";
 import { usePins, type Pin } from "@/lib/map/pins.store";
 import { computeAll, type Scores } from "@/lib/map/desirability";
 import { COMMUTER_TOWNS } from "@/lib/map/commuter-towns";
 import { ListingHoverPreview } from "./ListingHoverPreview";
+
+// maplibre-gl touches window on import — load it lazily inside effects so SSR works.
+type Maplibre = typeof import("maplibre-gl").default;
+let _ml: Maplibre | null = null;
+async function getMaplibre(): Promise<Maplibre> {
+  if (_ml) return _ml;
+  const mod = await import("maplibre-gl");
+  await import("maplibre-gl/dist/maplibre-gl.css");
+  _ml = mod.default;
+  return _ml;
+}
 
 type Props = {
   pinDropMode: boolean;
