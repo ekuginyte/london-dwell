@@ -270,7 +270,7 @@ export function MapView({
       if (radiusDropMode) return onRadiusDrop(e.lngLat.lng, e.lngLat.lat);
       if (drawAvoidMode) {
         drawCoordsRef.current.push([e.lngLat.lng, e.lngLat.lat]);
-        (map.getSource("draw") as maplibregl.GeoJSONSource | undefined)?.setData({
+        (map.getSource("draw") as GeoJSONSource | undefined)?.setData({
           type: "FeatureCollection",
           features: [{
             type: "Feature", properties: {},
