@@ -225,7 +225,7 @@ export function MapView({
     const map = mapRef.current;
     if (!map) return;
     const sync = () => {
-      const src = map.getSource("lsoa") as maplibregl.GeoJSONSource | undefined;
+      const src = map.getSource("lsoa") as GeoJSONSource | undefined;
       const scores = scoresRef.current;
       const data = geojsonRef.current;
       if (!src || !scores || !data) return;
@@ -242,14 +242,14 @@ export function MapView({
       map.setPaintProperty("lsoa-heat", "fill-opacity", mode === "heatmap" ? 0.72 : 0.5);
 
       if (filters.radius) {
-        (map.getSource("radius") as maplibregl.GeoJSONSource).setData(
+        (map.getSource("radius") as GeoJSONSource).setData(
           circleFC(filters.radius.lng, filters.radius.lat, filters.radius.radiusKm),
         );
       } else {
-        (map.getSource("radius") as maplibregl.GeoJSONSource).setData(emptyFC());
+        (map.getSource("radius") as GeoJSONSource).setData(emptyFC());
       }
 
-      (map.getSource("avoid") as maplibregl.GeoJSONSource).setData({
+      (map.getSource("avoid") as GeoJSONSource).setData({
         type: "FeatureCollection",
         features: filters.avoid.map((p) => ({
           type: "Feature", properties: {},
