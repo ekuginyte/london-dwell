@@ -101,6 +101,19 @@ function MapPage() {
             setRadiusDropMode(false);
           }}
         />
+        {activeMode && (
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-3 px-4 py-2 rounded-full bg-primary text-primary-foreground shadow-lg text-xs font-medium">
+            <span className="w-2 h-2 rounded-full bg-primary-foreground animate-pulse" />
+            <span>{activeMode.label}</span>
+            <button
+              onClick={activeMode.cancel}
+              className="ml-1 px-2 py-0.5 rounded-full bg-primary-foreground/15 hover:bg-primary-foreground/25 transition"
+              aria-label="Cancel (Esc)"
+            >
+              Cancel · Esc
+            </button>
+          </div>
+        )}
       </main>
       <PinDropDialog
         open={!!pendingPin}
